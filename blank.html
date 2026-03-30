@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html><head><script src="msal-browser.min.js"></script></head>
+<body><script>
+  // Questa pagina gestisce il redirect del popup MSAL e si chiude da sola
+  if (window.opener) {
+    new msal.PublicClientApplication({
+      auth: { clientId: '00000000-0000-0000-0000-000000000000', redirectUri: http://localhost }
+    }).initialize().then(() => window.close());
+  }
+</script></body>
+</html>
