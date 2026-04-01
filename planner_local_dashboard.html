@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Planner Performance Dashboard</title>
+<script src="chart.min.js"></script>
+<script src="msal-browser.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+#login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:16px;padding:24px}
+.login-title{font-size:26px;font-weight:700}
+.login-sub{color:#94a3b8;text-align:center;max-width:400px;line-height:1.6}
+.box{background:#1e293b;border-radius:12px;padding:24px;width:100%;max-width:440px;display:flex;flex-direction:column;gap:12px}
+label{font-size:13px;color:#94a3b8}
+input{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;width:100%}
+input:focus{outline:none;border-color:#6366f1}
+.btn{background:#6366f1;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer}
+.btn:hover{background:#4f46e5}
+.btn:disabled{background:#374151;cursor:not-allowed}
+.btn-sm{background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+.btn-sm:hover{background:#334155;color:#e2e8f0}
+.err{background:#450a0a;border:1px solid #991b1b;border-radius:10px;padding:14px;font-size:13px;color:#fca5a5;width:100%;max-width:440px;line-height:1.6}
+#app{display:none;padding:20px;max-width:1300px;margin:0 auto}
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+/* Main nav */
+.main-nav{display:flex;gap:8px;margin-bottom:18px;border-bottom:1px solid #1e293b;padding-bottom:12px}
+.nav-btn{background:none;border:none;color:#64748b;font-size:14px;font-weight:500;padding:8px 16px;cursor:pointer;border-radius:8px;transition:all .15s}
+.nav-btn:hover{background:#1e293b;color:#e2e8f0}
+.nav-btn.active{background:#6366f1;color:#fff;font-weight:600}
+/* Plans grid */
+.plans-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+.plan-card{background:#1e293b;border:2px solid #334155;border-radius:10px;padding:14px;cursor:pointer;text-align:left;color:#e2e8f0;transition:all .15s;width:100%}
+.plan-card:hover{border-color:#6366f1;background:#1e2d47}
+.plan-card.active{border-color:#6366f1}
+.plan-card.loaded{border-color:#10b981}
+.plan-card.loaded.active{border-color:#6366f1}
+.plan-card .em{font-size:20px;margin-bottom:5px}
+.plan-card .nm{font-weight:600;font-size:12px;line-height:1.3}
+.plan-card .loaded-tag{font-size:10px;color:#10b981;margin-top:4px}
+/* Filters */
+.filter-bar{background:#1e293b;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fg label{font-size:11px;color:#64748b}
+.fg input[type=date],.fg select{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:7px 10px;color:#e2e8f0;font-size:13px;min-width:120px}
+.fg select{min-width:150px}
+.filter-count{color:#64748b;font-size:12px;align-self:center}
+/* KPIs */
+.kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px 18px;flex:1;min-width:120px}
+.kpi .lbl{color:#94a3b8;font-size:11px;margin-bottom:4px}
+.kpi .val{font-size:26px;font-weight:700}
+.kpi .sub{color:#64748b;font-size:11px;margin-top:3px}
+/* Tabs */
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tab{background:#1e293b;border:none;color:#94a3b8;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px}
+.tab.active{background:#6366f1;color:#fff;font-weight:600}
+.panel{display:none}.panel.active{display:block}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.g2{grid-template-columns:1fr}}
+.card{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:14px}
+.card h3{font-size:11px;color:#94a3b8;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em}
+canvas{max-height:240px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:#64748b;text-align:left;padding:8px 10px;border-bottom:1px solid #334155;font-weight:500;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid #0f172a}
+.badge{border-radius:99px;padding:2px 9px;font-size:11px;font-weight:600;display:inline-block}
+.bg{background:#064e3b;color:#10b981}.bb{background:#1e3a5f;color:#6366f1}.br{background:#450a0a;color:#f87171}
+.bw{background:#0f172a;border-radius:99px;height:7px;margin-top:3px}
+.bf{height:7px;border-radius:99px}
+.li{background:#0f172a;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.li .tt{font-weight:600;font-size:13px}
+.li .mt{color:#64748b;font-size:12px;margin-top:2px}
+.prog-wrap{background:#1e293b;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.pb{background:#334155;border-radius:99px;height:6px;margin-top:8px}
+.pf{height:6px;border-radius:99px;background:#6366f1;transition:width .3s}
+.pl{color:#64748b;font-size:12px}
+.empty{text-align:center;padding:24px;color:#64748b;font-size:13px}
+/* Target times card */
+.target-card{background:linear-gradient(135deg,#1e293b 0%,#1a2744 100%);border:1px solid #334155;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+.target-card h3{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.target-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.target-item{background:#0f172a;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px}
+.target-item .ti-label{color:#e2e8f0;font-size:12px;flex:1;line-height:1.4}
+.target-item .ti-days{background:#1e3a5f;color:#6366f1;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap}
+.target-item .ti-days.urgent{background:#450a0a;color:#f87171}
+/* Person view plan selector */
+.pv-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:16px}
+.pv-plan-card{background:#1e293b;border:2px solid #334155;border-radius:8px;padding:10px 14px;cursor:pointer;text-align:left;color:#e2e8f0;transition:all .15s;font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px}
+.pv-plan-card:hover{border-color:#6366f1}
+.pv-plan-card.selected{border-color:#6366f1;background:#1e2d47}
+.pv-plan-card .pv-em{font-size:16px}
+.pv-plan-card .pv-check{margin-left:auto;color:#6366f1;display:none}
+.pv-plan-card.selected .pv-check{display:block}
+.loading-tag{color:#f59e0b;font-size:10px;margin-top:2px}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div style="font-size:48px">📊</div>
+  <div class="login-title">Planner Performance Dashboard</div>
+  <div class="login-sub">Connettiti a Microsoft 365 per analizzare i tuoi piani Planner.</div>
+  <div class="box">
+    <label>Azure App Client ID</label>
+    <input id="clientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+    <label>Tenant ID</label>
+    <input id="tenantId" value="common"/>
+    <button class="btn" id="loginBtn" onclick="startLogin()">🔗 Accedi con Microsoft</button>
+  </div>
+  <div id="lerr" style="display:none"></div>
+</div>
+
+<div id="app">
+  <div class="hdr">
+    <h1 id="app-title" style="font-size:20px;font-weight:700">📊 Planner Dashboard</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="ulab" style="color:#64748b;font-size:13px"></span>
+      <button class="btn-sm" onclick="logout()">Esci</button>
+    </div>
+  </div>
+
+  <!-- Main navigation -->
+  <div class="main-nav">
+    <button class="nav-btn active" id="nav-plans" onclick="switchView('plans')">📋 Vista per Piano</button>
+    <button class="nav-btn" id="nav-person" onclick="switchView('person')">👤 Vista per Persona</button>
+  </div>
+
+  <!-- ═══ VIEW 1: per piano ═══ -->
+  <div id="view-plans">
+    <!-- Target times card -->
+    <div class="target-card">
+      <h3>🎯 Tempi Target</h3>
+      <div class="target-list">
+        <div class="target-item"><span class="ti-label">🎨 Realizzazione grafica</span><span class="ti-days">5 gg lav. dalla richiesta</span></div>
+        <div class="target-item"><span class="ti-label">📦 Ordine materiale + consegna</span><span class="ti-days">14 gg lav. dalla richiesta</span></div>
+        <div class="target-item"><span class="ti-label">🔧 Modifiche / errori sito</span><span class="ti-days urgent">Giorno stesso</span></div>
+        <div class="target-item"><span class="ti-label">🎓 Formazione</span><span class="ti-days">7 gg dalla richiesta</span></div>
+        <div class="target-item"><span class="ti-label">📢 Annuncio di lavoro</span><span class="ti-days">3 gg dalla richiesta</span></div>
+        <div class="target-item"><span class="ti-label">📣 Campagne non pianificate</span><span class="ti-days">5 gg lav. dalla richiesta</span></div>
+      </div>
+    </div>
+    <div id="all-plans-grid"></div>
+    <div id="prog-wrap" style="display:none" class="prog-wrap">
+      <div class="pl" id="pl">Caricamento...</div>
+      <div class="pb"><div class="pf" id="pf" style="width:0%"></div></div>
+    </div>
+    <!-- filter bar: built once -->
+    <div id="filter-bar" class="filter-bar" style="display:none">
+      <div class="filter-row">
+        <div class="fg"><label>Data creazione DA</label><input type="date" id="f-from" onchange="applyFilters()"></div>
+        <div class="fg"><label>Data creazione A</label><input type="date" id="f-to" onchange="applyFilters()"></div>
+        <div class="fg"><label>Persona</label><select id="f-person" onchange="applyFilters()"><option value="all">Tutti</option></select></div>
+        <div class="fg"><label>Stato</label>
+          <select id="f-status" onchange="applyFilters()">
+            <option value="all">Tutti</option>
+            <option value="open">Aperti</option>
+            <option value="done">Completati</option>
+            <option value="late">In ritardo</option>
+          </select>
+        </div>
+        <button class="btn-sm" onclick="resetFilters()">✕ Reset</button>
+        <span class="filter-count" id="filter-count"></span>
+      </div>
+    </div>
+    <!-- kpi + tabs: updated in place -->
+    <div id="kpi-bar" style="display:none">
+      <div class="kpis">
+        <div class="kpi"><div class="lbl">Task Totali</div><div class="val" id="k-total" style="color:#e2e8f0">—</div></div>
+        <div class="kpi"><div class="lbl">Completati</div><div class="val" id="k-done" style="color:#10b981">—</div><div class="sub" id="k-done-sub"></div></div>
+        <div class="kpi"><div class="lbl">Tempo Medio Chiusura</div><div class="val" id="k-avg" style="color:#6366f1">—</div><div class="sub">gg lavorativi (escl. festività IT)</div></div>
+        <div class="kpi"><div class="lbl">In Ritardo</div><div class="val" id="k-late">—</div><div class="sub">aperti oltre scadenza</div></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" onclick="sw('overview',this)">📊 Overview</button>
+        <button class="tab" onclick="sw('person',this)">👤 Per Persona</button>
+        <button class="tab" onclick="sw('trend',this)">📈 Andamento</button>
+        <button class="tab" onclick="sw('late',this)" id="tab-late-btn">⚠️ In Ritardo</button>
+      </div>
+      <div id="tab-overview" class="panel active">
+        <div class="g2">
+          <div class="card"><h3>Completamento per Bucket</h3><div style="position:relative;height:220px"><canvas id="ch-bucket"></canvas></div></div>
+          <div class="card" id="status-card"><h3>Distribuzione Stato</h3></div>
+        </div>
+      </div>
+      <div id="tab-person" class="panel">
+        <div class="card"><h3>Performance per Persona</h3>
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Persona</th><th>Totale</th><th>Completati</th><th>%</th><th>Tempo Medio</th><th>In Ritardo</th></tr></thead>
+            <tbody id="person-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+      <div id="tab-trend" class="panel">
+        <div class="card"><h3>Task Completati per Mese</h3><div id="trend-wrap"></div></div>
+      </div>
+      <div id="tab-late" class="panel">
+        <div class="card"><h3 id="late-title">Task in Ritardo</h3><div id="late-list"></div></div>
+      </div>
+    </div>
+  </div><!-- end view-plans -->
+
+  <!-- ═══ VIEW 2: per persona ═══ -->
+  <div id="view-person" style="display:none">
+    <!-- Step 1: select plans to load -->
+    <div class="card" id="pv-plan-selector">
+      <h3>1 — Seleziona i piani da analizzare</h3>
+      <div id="pv-plans-grid" class="pv-plans" style="margin-top:12px"></div>
+      <div id="pv-load-prog" style="display:none" class="prog-wrap" style="margin-top:8px">
+        <div class="pl" id="pv-pl">Caricamento...</div>
+        <div class="pb"><div class="pf" id="pv-pf" style="width:0%"></div></div>
+      </div>
+    </div>
+    <!-- Step 2: filters + stats -->
+    <div id="pv-filters" class="filter-bar" style="display:none">
+      <div class="filter-row">
+        <div class="fg"><label>Persona</label><select id="pv-person" onchange="renderPersonStats()"><option value="">— seleziona —</option></select></div>
+        <div class="fg"><label>Data DA</label><input type="date" id="pv-from" onchange="renderPersonStats()"></div>
+        <div class="fg"><label>Data A</label><input type="date" id="pv-to" onchange="renderPersonStats()"></div>
+        <button class="btn-sm" onclick="pvReset()">✕ Reset date</button>
+      </div>
+    </div>
+    <div id="pv-stats"></div>
+  </div>
+
+</div><!-- end #app -->
+
+<script>
+const EMOJIS=['📌','🗂️','📁','🚀','🎯','⚙️','🔧','📐','🌐','💡','🏆','📣'];
+const COLS=['#6366f1','#22d3ee','#f59e0b','#10b981','#f43f5e','#a78bfa','#fb923c'];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+let msalInstance=null;
+let allTasks=[];        // tasks for current plan in view-plans
+let allPlans=[];        // full list of plans
+let userCache={};
+let planStore={};       // { planId: {title, tasks[], emoji} } — loaded plans cache
+let chartBucket=null, chartTrend=null, chartPV=null;
+let pvSelectedPlans=new Set(); // plan IDs selected in person view
+
+// ── GIORNI LAVORATIVI ─────────────────────────────────────────
+// Calcola la Pasqua con l'algoritmo di Meeus/Jones/Butcher
+function easterDate(year){
+  const a=year%19, b=Math.floor(year/100), c=year%100;
+  const d=Math.floor(b/4), e=b%4, f=Math.floor((b+8)/25);
+  const g=Math.floor((b-f+1)/3), h=(19*a+b-d-g+15)%30;
+  const i=Math.floor(c/4), k=c%4, l=(32+2*e+2*i-h-k)%7;
+  const m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31)-1; // 0-based
+  const day=(h+l-7*m+114)%31+1;
+  return new Date(year,month,day);
+}
+
+function italianHolidays(year){
+  const e=easterDate(year);
+  const pasquetta=new Date(e); pasquetta.setDate(e.getDate()+1);
+  const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return new Set([
+    `${year}-01-01`, // Capodanno
+    `${year}-01-06`, // Epifania
+    fmt(e),          // Pasqua
+    fmt(pasquetta),  // Pasquetta
+    `${year}-04-25`, // Liberazione
+    `${year}-05-01`, // Festa lavoro
+    `${year}-06-02`, // Repubblica
+    `${year}-08-15`, // Ferragosto
+    `${year}-11-01`, // Ognissanti
+    `${year}-12-08`, // Immacolata
+    `${year}-12-25`, // Natale
+    `${year}-12-26`, // Santo Stefano
+  ]);
+}
+
+// Cache festività per anno
+const holidayCache={};
+function getHolidays(year){
+  if(!holidayCache[year]) holidayCache[year]=italianHolidays(year);
+  return holidayCache[year];
+}
+
+function isWorkday(date){
+  const dow=date.getDay();
+  if(dow===0||dow===6) return false; // sabato/domenica
+  const key=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  return !getHolidays(date.getFullYear()).has(key);
+}
+
+// Giorni lavorativi tra due date (estremi inclusi se lavorativi)
+function workdaysBetween(d1str, d2str){
+  const start=new Date(d1str), end=new Date(d2str);
+  if(isNaN(start)||isNaN(end)||end<start) return 0;
+  let count=0, cur=new Date(start);
+  cur.setHours(0,0,0,0); end.setHours(0,0,0,0);
+  while(cur<=end){ if(isWorkday(cur)) count++; cur.setDate(cur.getDate()+1); }
+  return Math.max(0,count-1); // sottrai 1: non contare il giorno di inizio
+}
+
+function avgWorkdays(tasks){
+  const vals=tasks.filter(t=>t._completedDateTime).map(t=>workdaysBetween(t._createdDateTime,t._completedDateTime));
+  return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;
+}
+
+// ── AUTH ──────────────────────────────────────────────────────
+async function startLogin(){
+  const cid=document.getElementById('clientId').value.trim();
+  const tid=document.getElementById('tenantId').value.trim()||'common';
+  if(!cid){showErr('Inserisci il Client ID.');return;}
+  const btn=document.getElementById('loginBtn');
+  btn.disabled=true;btn.textContent='⏳ Connessione...';hideErr();
+  try{
+    msalInstance=new msal.PublicClientApplication({
+      auth:{clientId:cid,authority:`https://login.microsoftonline.com/${tid}`,
+        redirectUri:'https://mori658.github.io/planner-dashboard/blank.html'},
+      cache:{cacheLocation:'sessionStorage'},
+      system:{loggerOptions:{logLevel:msal.LogLevel.Error,loggerCallback:(l,m)=>console.log(m)}}
+    });
+    await msalInstance.initialize();
+    const accs=msalInstance.getAllAccounts();
+    if(accs.length){localStorage.setItem('pdb_c',cid);localStorage.setItem('pdb_t',tid);showApp(accs[0]);return;}
+    const r=await msalInstance.loginPopup({scopes:['Tasks.Read','User.Read'],prompt:'select_account'});
+    localStorage.setItem('pdb_c',cid);localStorage.setItem('pdb_t',tid);
+    showApp(r.account);
+  }catch(e){
+    btn.disabled=false;btn.textContent='🔗 Accedi con Microsoft';
+    showErr(e.errorCode==='popup_window_error'?'Popup bloccato. Consenti i popup e riprova.':e.message||e.errorCode);
+  }
+}
+async function getToken(){
+  const a=msalInstance.getAllAccounts();
+  try{return(await msalInstance.acquireTokenSilent({scopes:['Tasks.Read','User.Read'],account:a[0]})).accessToken;}
+  catch{return(await msalInstance.acquireTokenPopup({scopes:['Tasks.Read','User.Read']})).accessToken;}
+}
+function logout(){if(msalInstance)msalInstance.logoutPopup();localStorage.removeItem('pdb_c');localStorage.removeItem('pdb_t');location.reload();}
+function showErr(m){const e=document.getElementById('lerr');e.className='err';e.innerHTML='⚠️ '+m;e.style.display='block';}
+function hideErr(){document.getElementById('lerr').style.display='none';}
+
+// ── GRAPH with 429 retry ──────────────────────────────────────
+async function gFetch(url,retries=5){
+  for(let i=0;i<=retries;i++){
+    const r=await fetch(url,{headers:{Authorization:'Bearer '+await getToken()}});
+    if(r.status===429){
+      const wait=(parseInt(r.headers.get('Retry-After')||'10'))*1000;
+      console.warn('429 – waiting',wait,'ms');
+      await sleep(wait);
+      continue;
+    }
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||'HTTP '+r.status);}
+    return r.json();
+  }
+  throw new Error('Troppe richieste (429). Riprova tra qualche minuto.');
+}
+async function graph(path){return gFetch('https://graph.microsoft.com/v1.0'+path);}
+async function graphAll(path){
+  let url='https://graph.microsoft.com/v1.0'+path,items=[];
+  while(url){
+    const d=await gFetch(url);
+    items=[...items,...(d.value||[])];
+    url=d['@odata.nextLink']||null;
+    if(url)await sleep(300);
+  }
+  return items;
+}
+async function getUserName(uid){
+  if(userCache[uid])return userCache[uid];
+  try{
+    const u=await graph(`/users/${uid}?$select=displayName,userPrincipalName`);
+    userCache[uid]=u.displayName||u.userPrincipalName?.split('@')[0]||uid;
+  }catch{userCache[uid]='Utente-'+uid.slice(0,8);}
+  return userCache[uid];
+}
+
+// ── APP INIT ──────────────────────────────────────────────────
+async function showApp(account){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('ulab').textContent=account.name||account.username;
+  await loadAllPlans();
+}
+
+async function loadAllPlans(){
+  const g=document.getElementById('all-plans-grid');
+  g.innerHTML='<div style="color:#64748b;padding:10px">⏳ Caricamento lista piani...</div>';
+  try{
+    const [myPlans,myTasks]=await Promise.all([
+      graphAll('/me/planner/plans'),
+      graphAll('/me/planner/tasks?$select=planId')
+    ]);
+    const planMap={};
+    myPlans.forEach(p=>planMap[p.id]=p);
+    const missing=[...new Set(myTasks.map(t=>t.planId))].filter(id=>!planMap[id]);
+    for(const id of missing){
+      try{const p=await graph(`/planner/plans/${id}`);planMap[p.id]=p;}catch{}
+      await sleep(200);
+    }
+    allPlans=Object.values(planMap);
+    renderPlanGrid();
+    renderPVPlanGrid();
+  }catch(e){g.innerHTML=`<div class="err">❌ ${e.message}</div>`;}
+}
+
+function renderPlanGrid(){
+  const g=document.getElementById('all-plans-grid');
+  if(!allPlans.length){g.innerHTML='<p style="color:#64748b;padding:10px">Nessun piano trovato.</p>';return;}
+  g.innerHTML='<div class="plans-grid">'+allPlans.map((p,i)=>`
+    <button class="plan-card" id="pc-${p.id}" onclick="selectPlan('${p.id}','${esc(p.title)}',${i},this)">
+      <div class="em">${EMOJIS[i%EMOJIS.length]}</div>
+      <div class="nm">${esc(p.title)}</div>
+      <div class="loaded-tag" id="lt-${p.id}" style="display:none">✓ caricato</div>
+    </button>`).join('')+'</div>';
+}
+
+// ── LOAD PLAN (view 1) ────────────────────────────────────────
+async function selectPlan(id,title,idx,btn){
+  document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('app-title').textContent='📊 '+title;
+  document.getElementById('filter-bar').style.display='none';
+  document.getElementById('kpi-bar').style.display='none';
+  showProg('Caricamento task...',5);
+
+  try{
+    // Use cache if available
+    if(planStore[id]){
+      allTasks=planStore[id].tasks;
+      hideProg();
+      buildFilterBar();
+      applyFilters();
+      return;
+    }
+
+    setProg('Caricamento task e bucket...',15);
+    const [tasksRaw,bucketsRaw]=await Promise.all([
+      graphAll(`/planner/plans/${id}/tasks`),
+      graphAll(`/planner/plans/${id}/buckets`)
+    ]);
+    const bucketMap={};
+    bucketsRaw.forEach(b=>bucketMap[b.id]=b.name);
+
+    const uids=[...new Set(tasksRaw.flatMap(t=>Object.keys(t.assignments||{})))];
+    setProg(`Risoluzione ${uids.length} utenti...`,45);
+    for(const uid of uids){await getUserName(uid);await sleep(150);}
+
+    setProg('Elaborazione...',85);
+    allTasks=tasksRaw.map(t=>({
+      ...t,
+      _bucket:bucketMap[t.bucketId]||'—',
+      _assignees:Object.keys(t.assignments||{}).map(uid=>userCache[uid]||uid),
+      _completedDateTime:t.completedDateTime||null,
+      _createdDateTime:t.createdDateTime,
+      _planTitle:title
+    }));
+
+    // Cache for reuse in person view
+    planStore[id]={title,tasks:allTasks,emoji:EMOJIS[idx%EMOJIS.length]};
+    // Mark card as loaded
+    const lt=document.getElementById('lt-'+id);
+    if(lt)lt.style.display='block';
+    document.getElementById('pc-'+id)?.classList.add('loaded');
+    // Update pv plan card if exists
+    updatePVPlanCard(id);
+
+    setProg('Pronto!',100);
+    setTimeout(()=>{hideProg();buildFilterBar();applyFilters();},400);
+  }catch(e){
+    hideProg();
+    showErr(e.message);
+  }
+}
+
+// ── FILTERS (view 1) ──────────────────────────────────────────
+function buildFilterBar(){
+  const sel=document.getElementById('f-person');
+  const persons=[...new Set(allTasks.flatMap(t=>t._assignees))].sort();
+  sel.innerHTML='<option value="all">Tutti</option>'+persons.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  document.getElementById('f-from').value='';
+  document.getElementById('f-to').value='';
+  document.getElementById('f-status').value='all';
+  document.getElementById('filter-bar').style.display='block';
+}
+function getFilteredTasks(){
+  const from=document.getElementById('f-from').value;
+  const to=document.getElementById('f-to').value;
+  const person=document.getElementById('f-person').value;
+  const status=document.getElementById('f-status').value;
+  const now=new Date();
+  return allTasks.filter(t=>{
+    if(from&&t._createdDateTime&&t._createdDateTime.slice(0,10)<from)return false;
+    if(to&&t._createdDateTime&&t._createdDateTime.slice(0,10)>to)return false;
+    if(person!=='all'&&!(t._assignees||[]).includes(person))return false;
+    if(status==='open'&&t.percentComplete===100)return false;
+    if(status==='done'&&t.percentComplete!==100)return false;
+    if(status==='late'&&!(t.percentComplete!==100&&t.dueDateTime&&new Date(t.dueDateTime)<now))return false;
+    return true;
+  });
+}
+function applyFilters(){
+  const tasks=getFilteredTasks();
+  document.getElementById('filter-count').textContent=tasks.length+' task visualizzati';
+  renderMetrics(tasks);
+}
+function resetFilters(){
+  document.getElementById('f-from').value='';document.getElementById('f-to').value='';
+  document.getElementById('f-person').value='all';document.getElementById('f-status').value='all';
+  applyFilters();
+}
+
+// ── METRICS (view 1) ──────────────────────────────────────────
+function days(d1,d2){return Math.max(0,Math.round((new Date(d2)-new Date(d1))/864e5));}
+function avg(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;}
+function fmtD(n){return n>0?n.toFixed(1)+' gg':'—';}
+function esc(s){return(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function renderMetrics(tasks){
+  const now=new Date(),total=tasks.length||1;
+  const completed=tasks.filter(t=>t.percentComplete===100&&t._completedDateTime);
+  const open=tasks.filter(t=>t.percentComplete!==100);
+  const late=open.filter(t=>t.dueDateTime&&new Date(t.dueDateTime)<now);
+  const avgClose=avgWorkdays(completed);
+  document.getElementById('k-total').textContent=tasks.length;
+  document.getElementById('k-done').textContent=completed.length;
+  document.getElementById('k-done-sub').textContent=Math.round(completed.length/total*100)+'% del totale';
+  document.getElementById('k-avg').textContent=fmtD(avgClose);
+  const kl=document.getElementById('k-late');kl.textContent=late.length;kl.style.color=late.length>0?'#f43f5e':'#10b981';
+  document.getElementById('tab-late-btn').textContent=`⚠️ In Ritardo (${late.length})`;
+
+  document.getElementById('status-card').innerHTML=`<h3>Distribuzione Stato</h3>${sbar('Completati',completed.length,total,'#10b981')}${sbar('Aperti',open.length-late.length,total,'#6366f1')}${sbar('In Ritardo',late.length,total,'#f43f5e')}`;
+
+  // Per persona — usa giorni lavorativi
+  const pMap={};
+  tasks.forEach(t=>(t._assignees||[]).forEach(p=>{
+    if(!pMap[p])pMap[p]={name:p,total:0,done:0,late:0,wdays:[]};
+    pMap[p].total++;
+    if(t.percentComplete===100&&t._completedDateTime){pMap[p].done++;pMap[p].wdays.push(workdaysBetween(t._createdDateTime,t._completedDateTime));}
+    if(t.dueDateTime&&new Date(t.dueDateTime)<now&&t.percentComplete!==100)pMap[p].late++;
+  }));
+  const byPerson=Object.values(pMap).map(p=>({...p,avgDays:avg(p.wdays),rate:p.total?Math.round(p.done/p.total*100):0})).sort((a,b)=>b.total-a.total);
+  document.getElementById('person-tbody').innerHTML=byPerson.length
+    ?byPerson.map(p=>`<tr><td style="font-weight:600">${esc(p.name)}</td><td style="color:#94a3b8">${p.total}</td><td style="color:#10b981">${p.done}</td><td><span class="badge ${p.rate>=75?'bg':p.rate>=50?'bb':'br'}">${p.rate}%</span></td><td style="color:#f59e0b">${fmtD(p.avgDays)}</td><td style="color:${p.late>0?'#f87171':'#10b981'}">${p.late}</td></tr>`).join('')
+    :'<tr><td colspan="6" class="empty">Nessun task assegnato nel periodo</td></tr>';
+
+  const mMap={};
+  completed.forEach(t=>{const m=new Date(t._completedDateTime).toISOString().slice(0,7);mMap[m]=(mMap[m]||0)+1;});
+  const trend=Object.entries(mMap).sort().slice(-12);
+  const tw=document.getElementById('trend-wrap');
+  tw.innerHTML=trend.length?'<canvas id="ch-trend" style="max-height:280px"></canvas>':'<p class="empty">Nessun task completato nel periodo.<br><small>La data di completamento deve essere registrata in Planner.</small></p>';
+
+  const bMap={};
+  tasks.forEach(t=>{const b=t._bucket;if(!bMap[b])bMap[b]={name:b,total:0,done:0};bMap[b].total++;if(t.percentComplete===100)bMap[b].done++;});
+  const byBucket=Object.values(bMap).map(b=>({...b,rate:b.total?Math.round(b.done/b.total*100):0})).sort((a,b)=>b.total-a.total);
+
+  document.getElementById('late-title').textContent=`Task in Ritardo (${late.length})`;
+  document.getElementById('late-list').innerHTML=late.length===0
+    ?'<div class="empty" style="color:#10b981;font-size:22px">✅ Nessun task in ritardo!</div>'
+    :late.map(t=>{const d=Math.round((now-new Date(t.dueDateTime))/864e5);return`<div class="li"><div><div class="tt">${esc(t.title)}</div><div class="mt">${esc((t._assignees||[]).join(', ')||'Non assegnato')} · ${esc(t._bucket)}</div></div><span class="badge br">+${d} gg</span></div>`;}).join('');
+
+  document.getElementById('kpi-bar').style.display='block';
+  setTimeout(()=>{
+    if(chartBucket){chartBucket.destroy();chartBucket=null;}
+    const bc=document.getElementById('ch-bucket');
+    if(bc)chartBucket=new Chart(bc,{type:'bar',data:{labels:byBucket.map(b=>b.name),datasets:[{data:byBucket.map(b=>b.rate),backgroundColor:byBucket.map((_,i)=>COLS[i%COLS.length]),borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{max:100,ticks:{callback:v=>v+'%',color:'#64748b'},grid:{color:'#334155'}},y:{ticks:{color:'#94a3b8'}}}}});
+    if(chartTrend){chartTrend.destroy();chartTrend=null;}
+    const tc=document.getElementById('ch-trend');
+    if(tc&&trend.length)chartTrend=new Chart(tc,{type:'bar',data:{labels:trend.map(t=>t[0]),datasets:[{label:'Completati',data:trend.map(t=>t[1]),backgroundColor:'rgba(99,102,241,.75)',borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'},grid:{color:'#334155'}},y:{ticks:{color:'#64748b',stepSize:1},grid:{color:'#334155'}}}}});
+  },50);
+}
+
+function sbar(l,v,t,c){return`<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px"><span style="color:#94a3b8">${l}</span><span style="color:${c}">${v}</span></div><div class="bw"><div class="bf" style="width:${Math.round(v/t*100)}%;background:${c}"></div></div></div>`;}
+function kpi(l,v,s,c){return`<div class="kpi"><div class="lbl">${l}</div><div class="val" style="color:${c}">${v}</div>${s?`<div class="sub">${s}</div>`:''}</div>`;}
+function sw(id,btn){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('#kpi-bar .tab').forEach(t=>t.classList.remove('active'));document.getElementById('tab-'+id).classList.add('active');btn.classList.add('active');}
+function showProg(l,p){document.getElementById('prog-wrap').style.display='block';setProg(l,p);}
+function hideProg(){document.getElementById('prog-wrap').style.display='none';}
+function setProg(l,p){const el=document.getElementById('pl'),f=document.getElementById('pf');if(el)el.textContent=l;if(f&&p!==null)f.style.width=p+'%';}
+
+// ── VIEW SWITCHER ─────────────────────────────────────────────
+function switchView(v){
+  document.getElementById('view-plans').style.display=v==='plans'?'block':'none';
+  document.getElementById('view-person').style.display=v==='person'?'block':'none';
+  document.getElementById('nav-plans').classList.toggle('active',v==='plans');
+  document.getElementById('nav-person').classList.toggle('active',v==='person');
+}
+
+// ── PERSON VIEW ───────────────────────────────────────────────
+function renderPVPlanGrid(){
+  const g=document.getElementById('pv-plans-grid');
+  if(!allPlans.length){g.innerHTML='<p style="color:#64748b">Nessun piano disponibile.</p>';return;}
+  g.innerHTML=allPlans.map((p,i)=>{
+    const loaded=!!planStore[p.id];
+    const sel=pvSelectedPlans.has(p.id);
+    return`<button class="pv-plan-card ${sel?'selected':''}" id="pvc-${p.id}" onclick="togglePVPlan('${p.id}','${esc(p.title)}',${i})">
+      <span class="pv-em">${EMOJIS[i%EMOJIS.length]}</span>
+      <span style="flex:1;line-height:1.3">${esc(p.title)}${loaded?'<div class="loading-tag">✓ dati pronti</div>':''}</span>
+      <span class="pv-check">✓</span>
+    </button>`;
+  }).join('');
+}
+
+function updatePVPlanCard(planId){
+  const card=document.getElementById('pvc-'+planId);
+  if(card){
+    const tag=card.querySelector('.loading-tag');
+    if(!tag){
+      const span=card.querySelector('span:nth-child(2)');
+      if(span)span.innerHTML+=`<div class="loading-tag">✓ dati pronti</div>`;
+    }
+  }
+}
+
+async function togglePVPlan(id,title,idx){
+  if(pvSelectedPlans.has(id)){
+    pvSelectedPlans.delete(id);
+    document.getElementById('pvc-'+id)?.classList.remove('selected');
+  }else{
+    pvSelectedPlans.add(id);
+    document.getElementById('pvc-'+id)?.classList.add('selected');
+    // Load if not cached
+    if(!planStore[id]){
+      await loadPlanForPV(id,title,idx);
+    }
+  }
+  refreshPVFilters();
+  renderPersonStats();
+}
+
+async function loadPlanForPV(id,title,idx){
+  const prog=document.getElementById('pv-load-prog');
+  const pl=document.getElementById('pv-pl');
+  const pf=document.getElementById('pv-pf');
+  prog.style.display='block';
+  const setP=(l,p)=>{if(pl)pl.textContent=l;if(pf&&p!==null)pf.style.width=p+'%';};
+  try{
+    setP(`Caricamento "${title}"...`,10);
+    const [tasksRaw,bucketsRaw]=await Promise.all([
+      graphAll(`/planner/plans/${id}/tasks`),
+      graphAll(`/planner/plans/${id}/buckets`)
+    ]);
+    const bucketMap={};bucketsRaw.forEach(b=>bucketMap[b.id]=b.name);
+    const uids=[...new Set(tasksRaw.flatMap(t=>Object.keys(t.assignments||{})))];
+    setP(`Risoluzione ${uids.length} utenti...`,50);
+    for(const uid of uids){await getUserName(uid);await sleep(150);}
+    setP('Elaborazione...',85);
+    const tasks=tasksRaw.map(t=>({
+      ...t,
+      _bucket:bucketMap[t.bucketId]||'—',
+      _assignees:Object.keys(t.assignments||{}).map(uid=>userCache[uid]||uid),
+      _completedDateTime:t.completedDateTime||null,
+      _createdDateTime:t.createdDateTime,
+      _planTitle:title
+    }));
+    planStore[id]={title,tasks,emoji:EMOJIS[idx%EMOJIS.length]};
+    updatePVPlanCard(id);
+    // Also mark in view-plans grid
+    document.getElementById('lt-'+id) && (document.getElementById('lt-'+id).style.display='block');
+    document.getElementById('pc-'+id)?.classList.add('loaded');
+    setP('Pronto!',100);
+  }catch(e){setP('Errore: '+e.message,0);}
+  setTimeout(()=>prog.style.display='none',800);
+}
+
+function refreshPVFilters(){
+  // Collect all persons from selected plans
+  const selected=[...pvSelectedPlans].filter(id=>planStore[id]);
+  const persons=[...new Set(selected.flatMap(id=>planStore[id].tasks.flatMap(t=>t._assignees||[])))].sort();
+  const sel=document.getElementById('pv-person');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— seleziona —</option>'+persons.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+  document.getElementById('pv-filters').style.display=selected.length?'block':'none';
+}
+
+function pvReset(){
+  document.getElementById('pv-from').value='';
+  document.getElementById('pv-to').value='';
+  renderPersonStats();
+}
+
+function renderPersonStats(){
+  const person=document.getElementById('pv-person')?.value;
+  const from=document.getElementById('pv-from')?.value;
+  const to=document.getElementById('pv-to')?.value;
+  const stats=document.getElementById('pv-stats');
+
+  if(!person){stats.innerHTML='';return;}
+
+  const now=new Date();
+  const selected=[...pvSelectedPlans].filter(id=>planStore[id]);
+  const rows=[];
+
+  selected.forEach(id=>{
+    const {title,tasks,emoji}=planStore[id];
+    let t=tasks.filter(t=>(t._assignees||[]).includes(person));
+    if(from)t=t.filter(t=>t._createdDateTime&&t._createdDateTime.slice(0,10)>=from);
+    if(to)  t=t.filter(t=>t._createdDateTime&&t._createdDateTime.slice(0,10)<=to);
+    if(!t.length)return;
+    const done=t.filter(x=>x.percentComplete===100&&x._completedDateTime);
+    const open=t.filter(x=>x.percentComplete!==100);
+    const late=open.filter(x=>x.dueDateTime&&new Date(x.dueDateTime)<now);
+    rows.push({id,title,emoji,total:t.length,done:done.length,open:open.length,late:late.length,avgClose:avgWorkdays(done),rate:t.length?Math.round(done.length/t.length*100):0});
+  });
+
+  if(!rows.length){
+    stats.innerHTML='<div class="empty">Nessun task trovato per <strong>'+esc(person)+'</strong> nei piani selezionati nel periodo indicato.</div>';
+    return;
+  }
+
+  const totTotal=rows.reduce((s,r)=>s+r.total,0);
+  const totDone=rows.reduce((s,r)=>s+r.done,0);
+  const totLate=rows.reduce((s,r)=>s+r.late,0);
+  const totAvg=avg(rows.filter(r=>r.done>0).map(r=>r.avgClose));
+
+  stats.innerHTML=`
+    <div class="kpis">
+      ${kpi('Piani analizzati',rows.length,'','#e2e8f0')}
+      ${kpi('Task totali',totTotal,'su tutti i piani selezionati','#e2e8f0')}
+      ${kpi('Completati',totDone,Math.round(totDone/(totTotal||1)*100)+'% del totale','#10b981')}
+      ${kpi('Tempo medio globale',fmtD(totAvg),'media su tutti i piani','#6366f1')}
+      ${kpi('In ritardo',totLate,'aperti oltre la scadenza',totLate>0?'#f43f5e':'#10b981')}
+    </div>
+    <div class="card">
+      <h3>Dettaglio per Piano — ${esc(person)}</h3>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Piano</th><th>Task assegnati</th><th>Completati</th><th>% Completamento</th><th>Tempo Medio Chiusura</th><th>Aperti</th><th>In Ritardo</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td style="font-weight:600">${r.emoji} ${esc(r.title)}</td>
+          <td style="color:#94a3b8">${r.total}</td>
+          <td style="color:#10b981">${r.done}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge ${r.rate>=75?'bg':r.rate>=50?'bb':'br'}">${r.rate}%</span>
+              <div class="bw" style="width:70px;display:inline-block"><div class="bf" style="width:${r.rate}%;background:${r.rate>=75?'#10b981':r.rate>=50?'#6366f1':'#f43f5e'}"></div></div>
+            </div>
+          </td>
+          <td style="color:#f59e0b">${fmtD(r.avgClose)}</td>
+          <td style="color:#94a3b8">${r.open}</td>
+          <td style="color:${r.late>0?'#f87171':'#10b981'}">${r.late}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h3>Task per Piano — ${esc(person)}</h3>
+      <div style="position:relative;height:${Math.max(160,rows.length*50)}px">
+        <canvas id="pv-chart"></canvas>
+      </div>
+    </div>`;
+
+  setTimeout(()=>{
+    if(chartPV){chartPV.destroy();chartPV=null;}
+    const ctx=document.getElementById('pv-chart');
+    if(!ctx)return;
+    chartPV=new Chart(ctx,{type:'bar',
+      data:{labels:rows.map(r=>r.title),datasets:[
+        {label:'Completati',data:rows.map(r=>r.done),backgroundColor:'rgba(16,185,129,.8)',borderRadius:4},
+        {label:'Aperti',data:rows.map(r=>r.open-r.late),backgroundColor:'rgba(99,102,241,.8)',borderRadius:4},
+        {label:'In ritardo',data:rows.map(r=>r.late),backgroundColor:'rgba(244,63,94,.8)',borderRadius:4},
+      ]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#94a3b8',font:{size:12}}}},
+        scales:{x:{stacked:true,ticks:{color:'#64748b',stepSize:1},grid:{color:'#334155'}},y:{stacked:true,ticks:{color:'#94a3b8'}}}}
+    });
+  },50);
+}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  const c=localStorage.getItem('pdb_c'),t=localStorage.getItem('pdb_t')||'common';
+  if(c){document.getElementById('clientId').value=c;document.getElementById('tenantId').value=t;}
+});
+</script>
+</body>
+</html>
